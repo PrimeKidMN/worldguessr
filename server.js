@@ -87,7 +87,7 @@ if (!process.env.GOOGLE_CLIENT_SECRET) {
   dbEnabled = false;
 }
 
-const port = process.env.API_PORT || 3001;
+const port = process.env.API_PORT || 8000;
 
 let recentPlays = {}; // Track the recent play gains of maps
 
