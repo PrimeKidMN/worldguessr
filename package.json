@@ -58,4 +58,8 @@
   }
 }
 
+{
+  "packageManager": "pnpm@8.0.0"  // Replace with the actual version that Corepack added
+}
+
 
