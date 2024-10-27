@@ -9,7 +9,7 @@ A game by Gautam
 
 https://github.com/codergautam/worldguessr
 */
-
+require('dotenv').config(); // Load environment variables from .env file
 import fs from 'fs';
 import { config } from 'dotenv';
 import lookup from "coordinate_to_country"
