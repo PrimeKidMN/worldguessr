@@ -9,44 +9,45 @@ A game by Gautam
 
 https://github.com/codergautam/worldguessr
 */
-config();
 
+import { config } from 'dotenv'; // Import dotenv config
+import express from 'express';
 import mongoose from 'mongoose';
 import Clue from './models/Clue.js';
 import findLatLongRandom from './components/findLatLongServer.js';
 import path from 'path';
 import MapModel from './models/Map.js';
 import bodyParser from 'body-parser';
-
-// express
-import express from 'express';
-var app = express();
-
-// disable cors
 import cors from 'cors';
 import cityGen from './serverUtils/cityGen.js';
+import fs from 'fs'; // Added to enable file system operations
 
+config(); // Load environment variables
+
+const app = express();
+
+// Middleware
 app.use(cors());
-app.use(bodyParser.json({limit: '5mb'}));
-app.use(bodyParser.urlencoded({limit: '5mb', extended: true, parameterLimit:50000}));
+app.use(bodyParser.json({ limit: '5mb' }));
+app.use(bodyParser.urlencoded({ limit: '5mb', extended: true, parameterLimit: 50000 }));
 
-// Setup  /api routes
+// Setup /api routes
 const apiFolder = path.join(__dirname, 'api');
 function loadFolder(folder, subdir = '') {
   fs.readdirSync(folder).forEach(file => {
     const filePath = path.join(folder, file);
-    if(fs.lstatSync(filePath).isDirectory()) {
+    if (fs.lstatSync(filePath).isDirectory()) {
       loadFolder(filePath, subdir + file + '/');
       return;
     }
-    if(!file.endsWith('.js')) {
+    if (!file.endsWith('.js')) {
       return;
     }
 
-    const routePath = './api/' + subdir + file.split('.')[0]+'.js';
+    const routePath = './api/' + subdir + file.split('.')[0] + '.js';
     const webPath = '/api/' + subdir + file.split('.')[0];
     import(routePath).then(module => {
-      app.all(webPath, ( req, res ) => {
+      app.all(webPath, (req, res) => {
         module.default(req, res);
       });
     });
@@ -55,6 +56,7 @@ function loadFolder(folder, subdir = '') {
 
 let dbEnabled = true;
 
+// Check for MONGODB environment variable
 if (!process.env.MONGODB) {
   console.log("[MISSING-ENV WARN] MONGODB env variable not set".yellow);
   dbEnabled = false;
@@ -66,39 +68,35 @@ if (!process.env.MONGODB) {
       console.log('[INFO] Database Connected');
     } catch (error) {
       console.error('[ERROR] Database connection failed!'.red, error.message);
-      console.log(error);
       dbEnabled = false;
     }
   }
 }
 
-
-if(process.env.DISCORD_WEBHOOK) {
+// Check for Discord webhook and Google client credentials
+if (process.env.DISCORD_WEBHOOK) {
   console.log("[INFO] Discord Webhook Enabled");
 }
-if(!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
+if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
   console.log("[MISSING-ENV WARN] NEXT_PUBLIC_GOOGLE_CLIENT_ID env variable not set, please set it for multiplayer/auth!".yellow);
   dbEnabled = false;
 }
-if(!process.env.GOOGLE_CLIENT_SECRET) {
+if (!process.env.GOOGLE_CLIENT_SECRET) {
   console.log("[MISSING-ENV WARN] GOOGLE_CLIENT_SECRET env variable not set, please set it for multiplayer/auth!".yellow);
   dbEnabled = false;
 }
 
-
-
-
+// Set server port
 const port = process.env.API_PORT || 3001;
 
-let recentPlays = {}; // track the recent play gains of maps
+let recentPlays = {}; // Track recent play gains of maps
 
 async function updateRecentPlays() {
-  if(!dbEnabled) return;
-  for(const mapSlug of Object.keys(recentPlays)) {
-    if(recentPlays[mapSlug] > 0) {
-
+  if (!dbEnabled) return;
+  for (const mapSlug of Object.keys(recentPlays)) {
+    if (recentPlays[mapSlug] > 0) {
       const map = await MapModel.findOne({ slug: mapSlug });
-      if(map && map.accepted) {
+      if (map && map.accepted) {
         map.plays += recentPlays[mapSlug];
         console.log('Updating plays for', mapSlug, 'by', recentPlays[mapSlug]);
         await map.save();
@@ -110,12 +108,10 @@ async function updateRecentPlays() {
 
 setInterval(updateRecentPlays, 60000);
 
-
 let allLocations = [];
 let clueLocations = [];
 const locationCnt = 2000;
 const batchSize = 20;
-
 
 const generateMainLocations = async () => {
   for (let i = 0; i < locationCnt; i += batchSize) {
@@ -123,7 +119,7 @@ const generateMainLocations = async () => {
 
     for (let j = 0; j < batchSize && i + j < locationCnt; j++) {
       const locationPromise = new Promise((resolve, reject) => {
-        findLatLongRandom({ location: 'all' }, cityGen, lookup).then(resolve).catch(reject)
+        findLatLongRandom({ location: 'all' }, cityGen, lookup).then(resolve).catch(reject);
       });
 
       batchPromises.push(locationPromise);
@@ -132,23 +128,21 @@ const generateMainLocations = async () => {
     try {
       const batchResults = await Promise.all(batchPromises);
       allLocations.push(...batchResults);
-      if(allLocations.length % 100 === 0) console.log('Generated', allLocations.length, '/', locationCnt);
-      if(allLocations.length === locationCnt) {
+      if (allLocations.length % 100 === 0) console.log('Generated', allLocations.length, '/', locationCnt);
+      if (allLocations.length === locationCnt) {
         console.log('Finished generating all locations');
         while (true) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
           let latLong;
           try {
-          latLong = await findLatLongRandom({ location: 'all' }, cityGen, lookup);
-          }catch(e){}
-          // console.log('Generated', latLong);
-          if(!latLong) {
+            latLong = await findLatLongRandom({ location: 'all' }, cityGen, lookup);
+          } catch (e) {}
+          if (!latLong) {
             continue;
           }
-          // put in first allLocations and remove the last
+          // Put in first allLocations and remove the last
           allLocations.unshift(latLong);
           allLocations.pop();
-
         }
       }
     } catch (error) {
@@ -160,30 +154,27 @@ const generateMainLocations = async () => {
 
 generateMainLocations();
 
-
-// clue locations
-// get all clues
+// Clue locations
 const generateClueLocations = async () => {
-  if(!dbEnabled) return;
+  if (!dbEnabled) return;
   const clues = await Clue.find({});
-  // remove duplicate latlong
+  // Remove duplicate latlong
   const uniqueClues = [];
   let uniqueLatLongs = new Set();
-  for(const clue of clues) {
+  for (const clue of clues) {
     const latLong = `${clue.lat},${clue.lng}`;
-    if(!uniqueLatLongs.has(latLong)) {
+    if (!uniqueLatLongs.has(latLong)) {
       uniqueLatLongs.add(latLong);
       uniqueClues.push(clue);
     }
   }
 
-  // shuffle
+  // Shuffle
   uniqueLatLongs = new Set([...uniqueLatLongs].sort(() => Math.random() - 0.5));
   console.log('Generating clue locations', uniqueLatLongs.size);
-  // populate clueLocations
-  // ex format: {"lat":17.90240017665545,"long":102.7868538747363,"country":"TH"}
+  // Populate clueLocations
   clueLocations = [];
-  for(const clue of uniqueClues) {
+  for (const clue of uniqueClues) {
     const country = lookup(clue.lat, clue.lng, true)[0];
     clueLocations.push({
       lat: clue.lat,
@@ -198,15 +189,14 @@ setTimeout(() => {
   generateClueLocations();
 }, 20000);
 
-  app.get('/', (req, res) => {
-    res.status(200).send('WorldGuessr API - by Gautam');
-  });
+app.get('/', (req, res) => {
+  res.status(200).send('WorldGuessr API - by Gautam');
+});
 
 loadFolder(apiFolder);
 
 app.get('/allCountries.json', (req, res) => {
   if (allLocations.length !== locationCnt) {
-    // send json {ready: false}
     return res.json({ ready: false });
   } else {
     return res.json({ ready: true, locations: allLocations });
@@ -216,7 +206,6 @@ app.get('/allCountries.json', (req, res) => {
 // Endpoint for /clueCountries.json
 app.get('/clueCountries.json', (req, res) => {
   if (clueLocations.length === 0) {
-    // send json {ready: false}
     return res.json({ ready: false });
   } else {
     return res.json({ ready: true, locations: clueLocations.sort(() => Math.random() - 0.5) });
@@ -244,7 +233,7 @@ app.post('/mapPlay/:slug', async (req, res) => {
   res.send('ok');
 });
 
-// listen at port 3001 or process.env.API_PORT
+// Listen at port 3001 or process.env.API_PORT
 app.listen(port, () => {
   console.log(`[INFO] API Server running on port ${port}`);
 });
